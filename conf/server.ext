@@ -1,0 +1,9 @@
+extensions = x509v3
+
+[ x509v3 ]
+keyUsage         = digitalSignature,nonRepudiation,keyEncipherment
+extendedKeyUsage = serverAuth
+subjectAltName   = @alt_names
+
+[alt_names]
+IP.1 = %HOST_NAME%

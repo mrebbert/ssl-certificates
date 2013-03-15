@@ -1,0 +1,8 @@
+extensions = x509v3
+
+[ x509v3 ]
+keyUsage         = digitalSignature,nonRepudiation,keyEncipherment,dataEncipherment,keyAgreement
+extendedKeyUsage = clientAuth,emailProtection
+subjectAltName   = @alt_names
+
+[alt_names]

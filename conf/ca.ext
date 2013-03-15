@@ -1,0 +1,9 @@
+extensions = x509v3
+
+[ x509v3 ]
+basicConstraints      = CA:true,pathlen:0
+crlDistributionPoints = URI:http://www.yourdomain.com/ca/distp.crl
+nsCertType            = sslCA,emailCA,objCA
+nsCaPolicyUrl         = "http://www.yourdomain.com/ca/policy.htm"
+nsCaRevocationUrl     = "http://www.yourdomain.com/ca/revoke.crl"
+nsComment             = "Your Company CA"

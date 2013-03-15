@@ -1,0 +1,185 @@
+#!/bin/sh
+
+SSL_DIR=`dirname $0`/..
+
+usage() {
+    echo "Usage: $0 [-e [<environment>] -f [<hostname>] -t [client|server] -g[<hostgroup>] -a [<Subject Alternative Name>] ]"
+    exit 1
+}
+
+if [ $# -lt 1 ] ; then
+    usage
+fi
+counter="0"
+while getopts "he:f:t:g:a:" flag; do
+    case $flag in
+        e)
+          ENVIRONMENT=$OPTARG
+          ((counter+=1))
+          ;;
+        f)
+          HOST=$OPTARG
+          ((counter+=1))
+          ;;
+        t)
+          TYPE=$OPTARG
+          ((counter+=1))
+          ;;
+        g)
+          HOSTGROUP=$OPTARG
+          ((counter+=1))
+          ;;
+        a)
+          ALTSN=$OPTARG
+          ((counter+=1))
+          ;;
+       \?) 
+          usage
+          ;;
+        *)
+          usage
+          ;;
+    esac
+done
+
+if [ $counter -ne 5 ]; then 
+    usage
+fi 
+
+#echo "ENVIRONMENT: $ENVIRONMENT"
+#echo "HOST: $HOST"
+#echo "TYPE: $TYPE"
+#echo "HOSTGROUP: $HOSTGROUP"
+#echo "ALTSN: $ALTSN"
+
+if [ $TYPE != "server" ] && [ $TYPE != "client" ]; then 
+    usage
+fi
+
+. $SSL_DIR/conf/script.config
+
+if [ $OPENSSL = "" ] ; then
+  echo "Please put openssl in the path"
+  exit 1
+fi
+
+
+if [ $TYPE == 'client' ] ; then
+	CERT_EXT=$CLIENT_CERT_EXT
+	CERT_CONFIG_DIR=$CLIENT_CONFIG_DIR
+	FILENAME_CERT_TYPE=$CLIENT_FILENAME_CERT_TYPE
+        FILENAME=$HOST.$FILENAME_CERT_TYPE
+        CERT_CONFIG_TPL=$CLIENT_CERT_CONFIG_TPL
+elif [ $TYPE == 'server' ] ; then
+        CERT_EXT=$SERVER_CERT_EXT
+        CERT_CONFIG_DIR=$SERVER_CONFIG_DIR
+        FILENAME_CERT_TYPE=$SERVER_FILENAME_CERT_TYPE
+        FILENAME=$HOSTGROUP.$FILENAME_CERT_TYPE
+        CERT_CONFIG_TPL=$SERVER_CERT_CONFIG_TPL
+else 
+    usage
+fi
+
+#echo "FILENAME: "$FILENAME
+
+PASSWD=`cat $PASSWORD_FILE`
+
+#echo "PASSWD: "$PASSWD 
+
+
+if [ ! -d $CERT_CONFIG_DIR ]; then
+    mkdir -p $CERT_CONFIG_DIR
+    rc=$?
+    if [ $rc != 0 ] ; then
+        echo "Could not create certificate config directory (ExitCode: $rc)"
+        exit 1
+    fi
+fi
+#echo $CERT_CONFIG_DIR
+
+CERT_CONFIG=$CERT_CONFIG_DIR/$FILENAME.cnf
+#echo $CERT_CONFIG
+
+sed 's/%HOSTNAME%/'$HOST'/' <$CERT_CONFIG_TPL >$CERT_CONFIG
+rc=$?
+if [ $rc != 0 ] ; then
+   echo "Could not create server config file(ExitCode: $rc)"
+   exit 1
+fi
+
+TMP="$CERT_EXT.tmp"
+sed 's/%HOST_NAME%/'$ALTSN'/'<$CERT_EXT >$TMP
+rc=$?
+if [ $rc != 0 ] ; then
+   echo "Could not create server config file(ExitCode: $rc)"
+   exit 1
+fi
+
+count_ip="1"
+count_dns="1"
+ALTSN_arr=$(echo $ALTSN | tr "," "\n")
+
+for x in $ALTSN_arr; do
+    if [[ $x =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
+        echo "IP.$count_ip = "$x >> $TMP
+        ((count_ip+=1))
+    else 
+        echo "DNS.$count_dns = "$x >> $TMP
+        ((count_dns+=1))
+    fi
+done
+
+if [ ! -d "$CERT_DIR/$ENVIRONMENT" ]; then
+    mkdir -p $CERT_DIR/$ENVIRONMENT
+fi
+
+echo "Generating key for $HOST/$FILENAME"
+"$OPENSSL" genrsa -passout file:$PASSWORD_FILE \
+    -out $CERT_DIR/$ENVIRONMENT/$FILENAME.$KEY_EXT 2048
+rc=$?
+if [ $rc != 0 ] ; then
+   echo "OpenSSL: generating cert key failed(ExitCode: $rc)"
+   exit 1
+fi
+
+if [ ! -d "$CSR_DIR/$ENVIRONMENT" ]; then
+    mkdir -p $CSR_DIR/$ENVIRONMENT
+fi
+echo "Generating request for $HOST/$FILENAME"
+"$OPENSSL" req -passin pass:$PASSWD \
+    -passout file:$PASSWORD_FILE \
+    -config $CERT_CONFIG -new -key $CERT_DIR/$ENVIRONMENT/$FILENAME.$KEY_EXT \
+    -out $CSR_DIR/$ENVIRONMENT/$FILENAME.csr
+rc=$?
+if [ $rc != 0 ] ; then
+   echo "OpenSSL: generating server csr failed(ExitCode: $rc)"
+   exit 1
+fi
+
+if [ ! -d "$DB_DIR/$ENVIRONMENT" ]; then
+    mkdir -p $DB_DIR/$ENVIRONMENT
+fi
+
+if [ ! -f $CA_SERIAL ] ; then
+    echo '01' > $CA_SERIAL
+fi
+
+echo "Signing request for $HOST/$FILENAME"
+"$OPENSSL" x509 \
+   -passin file:$PASSWORD_FILE \
+   -days $CERT_DAYS -extfile $TMP \
+   -CA $CA_CRT -CAkey $CA_KEY -CAserial $CA_SERIAL \
+   -in $CSR_DIR/$ENVIRONMENT/$FILENAME.csr \
+   -req \
+   -out $CERT_DIR/$ENVIRONMENT/${FILENAME}.$EXT
+rc=$?
+if [ $rc != 0 ] ; then
+   echo "OpenSSL: generating server crt failed(ExitCode: $rc)"
+   exit 1
+fi
+
+$UPDATE_INDEX $CERT_DIR/$ENVIRONMENT/${FILENAME}.$EXT $CA_DB
+
+rm -rf $TMP
+
+exit 0

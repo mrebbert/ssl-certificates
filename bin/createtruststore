@@ -1,0 +1,49 @@
+#!/bin/sh
+
+SSL_DIR=`dirname $0`/..
+
+usage() {
+    echo "Usage: $0 [-e [<environment>]]"
+    exit 0
+}
+
+if [ $# -lt 1 ] ; then
+    usage
+fi
+
+while getopts "he:" flag
+do
+    case $flag in
+        e)
+          ENVIRONMENT=$OPTARG
+          ;;
+        *)
+          usage
+          ;;
+    esac
+done
+
+. $SSL_DIR/conf/script.config
+
+if [ $KEYTOOL = "" ] ; then
+  echo "Please put keytool in the path"
+  exit 1
+fi
+
+if [ -z $CA_CRT ]; then
+    echo "No CA Certificate found!"
+    exit 1
+fi
+
+PASSWD=`cat $PASSWORD_FILE`
+
+"$KEYTOOL" -import -trustcacerts -noprompt \
+    -file $CA_CRT -alias "$CA_ALIAS" \
+    -keystore $CA_KEYSTORE -storepass $PASSWD
+rc=$?
+if [ $rc != 0 ] ; then
+   echo "Generating Truststore failed(Exit Code: $rc)"
+   exit 1
+fi
+
+exit 0

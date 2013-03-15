@@ -1,0 +1,77 @@
+#!/bin/sh
+
+SSL_DIR=`dirname $0`/..
+
+
+usage() {
+    echo "Usage: $0 <-e <ENVIRONMENT>>"
+    exit 0
+}
+
+if [ $# -lt 1 ] ; then
+    usage
+fi
+
+while getopts "he:" flag
+do
+    case $flag in
+        e)
+          ENVIRONMENT=$OPTARG
+          ;;
+        *)
+          usage
+          ;;
+    esac
+done
+
+. $SSL_DIR/conf/script.config
+
+if [ -z $OPENSSL ] ; then
+  echo "Please put openssl in the path"
+  exit 1
+fi
+
+PASSWD=`cat $PASSWORD_FILE`
+
+if [ ! -d "$CA_DIR/$ENVIRONMENT" ]; then
+    mkdir -p $CA_DIR/$ENVIRONMENT
+fi
+
+echo "Generating ca key ..."
+"$OPENSSL" genrsa -des3 -passout file:$PASSWORD_FILE -out $CA_KEY 2048
+rc=$?
+if [ $rc != 0 ] ; then
+   echo "OpenSSL: generating ca key failed(ExitCode: $rc)"
+   exit 1
+fi
+
+if [ ! -d "$CSR_DIR/$ENVIRONMENT" ]; then
+    mkdir -p $CSR_DIR/$ENVIRONMENT
+fi
+
+echo "Generating CA signing request."
+"$OPENSSL" req -passin pass:$PASSWD \
+    -passout file:$PASSWORD_FILE \
+    -config $CA_CONFIG -new -key $CA_KEY \
+    -out $CA_CSR
+rc=$?
+if [ $rc != 0 ] ; then
+   echo "OpenSSL: generating ca csr failed(ExitCode: $rc)"
+   exit 1
+fi
+
+echo "Signing CA Certificate."
+"$OPENSSL" x509 \
+   -passin file:$PASSWORD_FILE \
+   -days $CA_DAYS -extfile $CA_EXT \
+   -signkey $CA_KEY \
+   -in $CA_CSR \
+   -req \
+   -out $CA_CRT
+rc=$?
+if [ $rc != 0 ] ; then
+   echo "OpenSSL: generating ca crt failed(ExitCode: $rc)"
+   exit 1
+fi
+
+exit 0

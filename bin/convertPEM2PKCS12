@@ -1,0 +1,34 @@
+#!/bin/sh
+
+SSL_DIR=`dirname $0`/..
+
+. $SSL_DIR/conf/script.config
+
+if [ -z $OPENSSL ] ; then
+  echo "Please put openssl in the path"
+  exit 1
+fi
+
+if [ -z $1 ]; then
+    echo "Usage: $0 <pemfile> <keyfile>"
+    exit 2
+fi
+PEMFILE=$1
+
+if [ -z $2 ]; then
+    echo "Usage: $0 <pemfile> <keyfile>"
+    exit 2
+fi
+KEYFILE=$2
+
+$OPENSSL pkcs12 \
+    -export \
+    -passin file:$PASSWORD_FILE \
+    -in $PEMFILE \
+    -inkey $KEYFILE \
+    -out $PEMFILE.p12
+rc=$?
+if [ $rc != 0 ] ; then
+   echo "OpenSSL: Converting PEM FILE failed(ExitCode: $rc)"
+   exit 1
+fi

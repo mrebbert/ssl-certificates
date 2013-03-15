@@ -1,0 +1,61 @@
+#!/bin/sh
+
+SSL_DIR=`dirname $0`/..
+
+usage() {
+    echo "Usage: $0 [-e [<environment>] -f [<inputfile>] -t [client|server] ]"
+    exit 1
+}
+
+if [ $# -lt 1 ] ; then
+    usage
+fi
+
+ounter="0"
+while getopts "he:f:t:g:a:" flag; do
+    case $flag in
+        e)
+          ENVIRONMENT=$OPTARG
+          ((counter+=1))
+          ;;
+        f)
+          INPUTFILE=$OPTARG
+          ((counter+=1))
+          ;;
+        t)
+          TYPE=$OPTARG
+          ((counter+=1))
+          ;;
+       \?)
+          usage
+          ;;
+        *)
+          usage
+          ;;
+    esac
+done
+
+if [ $counter -ne 3 ]; then
+    usage
+fi
+
+if [ $TYPE != "server" ] && [ $TYPE != "client" ]; then
+    usage
+fi
+
+. $SSL_DIR/conf/script.config
+
+for csv in `cat $INPUTFILE | grep -v ^#` ; do
+   if [ $TYPE == "server" ]; then
+       HOSTGROUP=$(echo $csv | cut -d";" -f1)
+       ALTSN=$(echo $csv | cut -d";" -f2)
+       $CREATE_CRT -e $ENVIRONMENT -f $HOSTGROUP -t $TYPE -g $HOSTGROUP -a $ALTSN
+       $CREATE_KEYSTORE -e $ENVIRONMENT -f $HOSTGROUP -t $TYPE -g $HOSTGROUP
+   elif [ $TYPE == "client" ]; then
+       HOST=$(echo $csv | cut -d";" -f1)
+       HOSTGROUP=$(echo $csv | cut -d";" -f2)
+       ALTSN=$(echo $csv | cut -d";" -f3)
+       $CREATE_CRT -e $ENVIRONMENT -f $HOST -t $TYPE -g $HOSTGROUP -a $ALTSN
+       $CREATE_KEYSTORE -e $ENVIRONMENT -f $HOST -t $TYPE -g $HOSTGROUP
+   fi
+done
